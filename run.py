@@ -81,15 +81,13 @@ if __name__ == '__main__':
     model.cuda()
 
     # set up the optimizer
-    opt = torch.optim.Adam(model.parameters(), 1e-3, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=45, gamma=0.1)
+    opt = torch.optim.Adagrad(model.parameters(), lr=1e-2, eps=1e-6)
     
     # start the training
     for epoch in range(100):
         print("epoch %d" % (epoch, ))
-        scheduler.step(epoch)
-        run_epoch('test', upto=5) # run only a few batches for approximate test accuracy
         run_epoch('train')
+        run_epoch('test', upto=5) # run only a few batches for approximate test accuracy
     
     print("optimization done. full test set eval:")
     run_epoch('test')
