@@ -4,6 +4,7 @@ https://github.com/mgermain/MADE/releases/download/ICML2015/binarized_mnist.npz
 """
 import argparse
 
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -50,6 +51,7 @@ def run_epoch(split, upto=None):
             opt.step()
         
     print("%s epoch average loss: %f" % (split, np.mean(lossfs)))
+    return np.mean(lossfs)
 # ------------------------------------------------------------------------------
 
 if __name__ == '__main__':
@@ -59,6 +61,8 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--num-masks', type=int, default=1, help="Number of orderings for order/connection-agnostic training")
     parser.add_argument('-r', '--resample-every', type=int, default=20, help="For efficiency we can choose to resample orders/masks only once every this many steps")
     parser.add_argument('-s', '--samples', type=int, default=1, help="How many samples of connectivity/masks to average logits over during inference")
+    parser.add_argument('-p', '--patience', type=int, default=None, help="Patience for early stopping.")
+    parser.add_argument('-m', '--max_epochs', type=int, default=100, help="Maximum epochs.")
     args = parser.parse_args()
     # --------------------------------------------------------------------------
     
@@ -82,12 +86,20 @@ if __name__ == '__main__':
 
     # set up the optimizer
     opt = torch.optim.Adagrad(model.parameters(), lr=1e-2, eps=1e-6)
-    
+    epochs_no_improve = 0
+    last_loss = math.inf
     # start the training
-    for epoch in range(100):
+    for epoch in range(args.max_epochs):
         print("epoch %d" % (epoch, ))
         run_epoch('train')
-        run_epoch('test', upto=5) # run only a few batches for approximate test accuracy
+        loss = run_epoch('test', upto=10) # run only a few batches for approximate test accuracy
+        epochs_no_improve = 0 if loss < last_loss else epochs_no_improve +1
+        last_loss = loss
+        if epochs_no_improve >= args.patience:
+            print("Early Stopping: No improvement for %d epochs", (args.patience))
+            early_stop = True
+            break
+        
     
     print("optimization done. full test set eval:")
     run_epoch('test')
