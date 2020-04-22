@@ -45,16 +45,18 @@ class MADE(nn.Module):
         assert self.nout % self.nin == 0, "nout must be integer multiple of nin"
         
         # define a simple MLP neural net
-        self.net = []
+        self.layers = []
         hs = [nin] + hidden_sizes + [nout]
         for h0,h1 in zip(hs, hs[1:]):
-            self.net.extend([
+            self.layers.extend([
                     MaskedLinear(h0, h1),
                     nn.ReLU(),
                 ])
-        self.net.pop() # pop the last ReLU for the output layer
-        self.net = nn.Sequential(*self.net)
-        
+        self.layers.pop() # pop the last ReLU for the output layer
+        self.net = nn.Sequential(*self.layers)
+        # direct input output connection
+        self.direct = MaskedLinear(nin, nout, bias=False)
+
         # seeds for orders/connectivities of the model ensemble
         self.natural_ordering = natural_ordering
         self.num_masks = num_masks
@@ -81,7 +83,13 @@ class MADE(nn.Module):
         # construct the mask matrices
         masks = [self.m[l-1][:,None] <= self.m[l][None,:] for l in range(L)]
         masks.append(self.m[L-1][:,None] < self.m[-1][None,:])
-        
+
+        #construct mask for direct input output connection
+        mask_direct = np.tril(np.ones((self.nin,self.nout)),-1)
+        idx = self.m[-1]
+        mask_direct = mask_direct[:,idx][idx,:]
+        mask_direct = mask_direct.T
+
         # handle the case where nout = nin * k, for integer k > 1
         if self.nout > self.nin:
             k = int(self.nout / self.nin)
@@ -92,9 +100,12 @@ class MADE(nn.Module):
         layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
         for l,m in zip(layers, masks):
             l.set_mask(m)
+        self.direct.set_mask(mask_direct)
     
     def forward(self, x):
-        return self.net(x)
+        x_1 = self.net(x)
+        x_2 = self.direct(x)
+        return x_1.add(x_2)
 
 # ------------------------------------------------------------------------------
 

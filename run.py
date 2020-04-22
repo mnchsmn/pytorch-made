@@ -13,13 +13,13 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from made import MADE
+from util import save_dict_to_json_file
 
 # ------------------------------------------------------------------------------
-def run_epoch(split, upto=None):
+def run_epoch(x, split, upto=None):
     torch.set_grad_enabled(split=='train') # enable/disable grad for efficiency of forwarding test batches
     model.train() if split == 'train' else model.eval()
     nsamples = 1 if split == 'train' else args.samples
-    x = xtr if split == 'train' else xte
     N,D = x.size()
     B = 100 # batch size
     nsteps = N//B if upto is None else min(N//B, upto)
@@ -74,26 +74,41 @@ if __name__ == '__main__':
     # load the dataset
     print("loading binarized mnist from", args.data_path)
     mnist = np.load(args.data_path)
-    xtr, xte = mnist['train_data'], mnist['valid_data']
+    xtr, xva = mnist['train_data'], mnist['valid_data']
+    # split validation set in validation + test set
+    num_val = xva.shape[0] // 2
+    xte = xva[:num_val,:]
+    xva = xva [num_val:,:]
     xtr = torch.from_numpy(xtr).cuda()
+    xva = torch.from_numpy(xva).cuda()
     xte = torch.from_numpy(xte).cuda()
 
     # construct model and ship to GPU
     hidden_list = list(map(int, args.hiddens.split(',')))
     model = MADE(xtr.size(1), hidden_list, xtr.size(1), num_masks=args.num_masks)
+    print(model)
     print("number of model parameters:",sum([np.prod(p.size()) for p in model.parameters()]))
     model.cuda()
 
     # set up the optimizer
     opt = torch.optim.Adagrad(model.parameters(), lr=1e-2, eps=1e-6)
     epochs_no_improve = 0
-    last_loss = math.inf
+    best_loss = math.inf
+    best_epoch = 0
     # start the training
     for epoch in range(args.max_epochs):
         print("epoch %d" % (epoch, ))
-        run_epoch('train')
-        loss = run_epoch('test', upto=10) # run only a few batches for approximate test accuracy
-        epochs_no_improve = 0 if loss < last_loss else epochs_no_improve +1
+        run_epoch(x=xtr, split='train')
+        loss = run_epoch(x=xva, split='test') # run only a few batches for approximate test accuracy
+        if loss < best_loss:
+            epochs_no_improve = 0
+            best_loss = loss
+            model_params = {}
+            model_params['best_loss'] = best_loss
+            model_params['best_epoch'] = best_epoch
+            save_dict_to_json_file('./experiments/mnist.json', model_params)
+        else:
+            epochs_no_improve += 1
         last_loss = loss
         if epochs_no_improve >= args.patience:
             print("Early Stopping: No improvement for %d epochs", (args.patience))
@@ -102,5 +117,5 @@ if __name__ == '__main__':
         
     
     print("optimization done. full test set eval:")
-    run_epoch('test')
+    run_epoch(x=xte, split='test')
 
