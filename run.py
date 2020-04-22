@@ -95,27 +95,40 @@ if __name__ == '__main__':
     epochs_no_improve = 0
     best_loss = math.inf
     best_epoch = 0
+    path = './experiments/mnist'
+    for n in hidden_list:
+        path += '_' + str(n)
+    path += '#' + str(args.num_masks)
+    path += '.tar'
     # start the training
     for epoch in range(args.max_epochs):
         print("epoch %d" % (epoch, ))
         run_epoch(x=xtr, split='train')
-        loss = run_epoch(x=xva, split='test') # run only a few batches for approximate test accuracy
+        loss = run_epoch(x=xva, split='test', upto=10) # run only a few batches for approximate test accuracy
         if loss < best_loss:
             epochs_no_improve = 0
             best_loss = loss
-            model_params = {}
-            model_params['best_loss'] = best_loss
-            model_params['best_epoch'] = best_epoch
-            save_dict_to_json_file('./experiments/mnist.json', model_params)
+            best_epoch = epoch
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': opt.state_dict(),
+                'loss': loss
+                }, path)
         else:
             epochs_no_improve += 1
         last_loss = loss
         if epochs_no_improve >= args.patience:
-            print("Early Stopping: No improvement for %d epochs", (args.patience))
-            early_stop = True
+            print("Early Stopping: No improvement for %d epochs" % (args.patience))
             break
         
     
     print("optimization done. full test set eval:")
-    run_epoch(x=xte, split='test')
-
+    
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    opt.load_state_dict(checkpoint['optimizer_state_dict'])
+    
+    test_loss = run_epoch(x=xte, split='test')
+    checkpoint['test_loss'] = test_loss
+    torch.save(checkpoint, path)
