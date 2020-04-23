@@ -98,8 +98,10 @@ if __name__ == '__main__':
     path = './experiments/mnist'
     for n in hidden_list:
         path += '_' + str(n)
-    path += '#' + str(args.num_masks)
-    path += '.tar'
+    path += '#m' + str(args.num_masks)
+    path += '#s' + str(args.samples)
+    params = {}
+    params['args'] = args
     # start the training
     for epoch in range(args.max_epochs):
         print("epoch %d" % (epoch, ))
@@ -109,12 +111,15 @@ if __name__ == '__main__':
             epochs_no_improve = 0
             best_loss = loss
             best_epoch = epoch
+            params['best_epoch'] = epoch
+            params['best_loss'] = loss
+            save_dict_to_json_file(path + '.json', params)
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': opt.state_dict(),
                 'loss': loss
-                }, path)
+                }, path + ".tar")
         else:
             epochs_no_improve += 1
         last_loss = loss
@@ -130,5 +135,7 @@ if __name__ == '__main__':
     opt.load_state_dict(checkpoint['optimizer_state_dict'])
     
     test_loss = run_epoch(x=xte, split='test')
+    params['test_loss'] = test_loss
+    save_dict_to_json_file(path + '.json', params)
     checkpoint['test_loss'] = test_loss
     torch.save(checkpoint, path)
