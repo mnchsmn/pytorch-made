@@ -1,3 +1,3 @@
 binarized_mnist.npz
 experiments/
-__pycache
+__pycache__
