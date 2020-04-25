@@ -34,7 +34,7 @@ def run_epoch(x, split, upto=None):
         for s in range(nsamples):
             # perform order/connectivity-agnostic training by resampling the masks
             if step % args.resample_every == 0 or split == 'test': # if in test, cycle masks every time
-                model.update_masks()
+                model.next_masks()
             # forward the model
             xbhat += model(xb)
         xbhat /= nsamples
@@ -101,7 +101,11 @@ if __name__ == '__main__':
     path += '#m' + str(args.num_masks)
     path += '#s' + str(args.samples)
     params = {}
-    params['args'] = args
+    params['layers'] = args.hiddens
+    params['num_masks'] = args.num_masks
+    params['samples'] = args.samples
+    params['resample'] = args.resample_every
+    params['patience'] = args.patience
     # start the training
     for epoch in range(args.max_epochs):
         print("epoch %d" % (epoch, ))
@@ -130,7 +134,7 @@ if __name__ == '__main__':
     
     print("optimization done. full test set eval:")
     
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path + ".tar")
     model.load_state_dict(checkpoint['model_state_dict'])
     opt.load_state_dict(checkpoint['optimizer_state_dict'])
     
@@ -138,4 +142,4 @@ if __name__ == '__main__':
     params['test_loss'] = test_loss
     save_dict_to_json_file(path + '.json', params)
     checkpoint['test_loss'] = test_loss
-    torch.save(checkpoint, path)
+    torch.save(checkpoint, path +  ".tar")

@@ -63,10 +63,63 @@ class MADE(nn.Module):
         self.seed = 0 # for cycling through num_masks orderings
         
         self.m = {}
-        self.update_masks() # builds the initial self.m connectivity
+        self.build_mask_sets() # builds the initial self.m connectivity
         # note, we could also precompute the masks and cache them, but this
         # could get memory expensive for large number of masks.
-        
+    
+    def build_mask_sets(self):
+        mask_sets = []
+        L = len(self.hidden_sizes)
+        for i in range(self.num_masks):
+            # fetch the next seed and construct a random stream
+            rng = np.random.RandomState(self.seed)
+            self.seed = (self.seed + 1) % self.num_masks
+            
+            # sample the order of the inputs and the connectivity of all neurons
+            self.m[-1] = np.arange(self.nin) if self.natural_ordering else rng.permutation(self.nin)
+            for l in range(L):
+                self.m[l] = rng.randint(self.m[l-1].min(), self.nin-1, size=self.hidden_sizes[l])
+            
+            # construct the mask matrices
+            masks = [self.m[l-1][:,None] <= self.m[l][None,:] for l in range(L)]
+            masks.append(self.m[L-1][:,None] < self.m[-1][None,:])
+
+            #construct mask for direct input output connection
+            mask_direct = np.tril(np.ones((self.nin,self.nout)),-1)
+            idx = self.m[-1]
+            mask_direct = mask_direct[:,idx][idx,:]
+            mask_direct = mask_direct.T
+
+            # handle the case where nout = nin * k, for integer k > 1
+            if self.nout > self.nin:
+                k = int(self.nout / self.nin)
+                # replicate the mask across the other outputs
+                masks[-1] = np.concatenate([masks[-1]]*k, axis=1)
+            
+            mask_sets.append({
+                'masks': masks,
+                'mask_direct': mask_direct
+            })
+        self.mask_sets = mask_sets
+        self.current_mask = 0
+        self.set_mask_by_number(self.current_mask)
+
+    
+    def next_masks(self):
+        self.current_mask = (self.current_mask + 1) % self.num_masks
+        self.set_mask_by_number(self.current_mask)
+
+    def set_mask_by_number(self, num):
+        mask_set = self.mask_sets[num]
+        masks = mask_set['masks']
+        mask_direct = mask_set['mask_direct']
+
+        # set the masks in all MaskedLinear layers
+        layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
+        for l,m in zip(layers, masks):
+            l.set_mask(m)
+        self.direct.set_mask(mask_direct)
+
     def update_masks(self):
         if self.m and self.num_masks == 1: return # only a single seed, skip for efficiency
         L = len(self.hidden_sizes)
