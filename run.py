@@ -72,7 +72,7 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(42)
     
     # load the dataset
-    print("loading binarized mnist from", args.data_path)
+    print("loading data from", args.data_path)
     mnist = np.load(args.data_path)
     xtr, xva = mnist['train_data'], mnist['valid_data']
     # split validation set in validation + test set
@@ -82,7 +82,9 @@ if __name__ == '__main__':
     xtr = torch.from_numpy(xtr).cuda()
     xva = torch.from_numpy(xva).cuda()
     xte = torch.from_numpy(xte).cuda()
-
+    print('training_set: ' + str(xtr.shape))
+    print('validation_set: ' + str(xva.shape))
+    print('test_set: ' + str(xte.shape))
     # construct model and ship to GPU
     hidden_list = list(map(int, args.hiddens.split(',')))
     model = MADE(xtr.size(1), hidden_list, xtr.size(1), num_masks=args.num_masks)
@@ -91,11 +93,12 @@ if __name__ == '__main__':
     model.cuda()
 
     # set up the optimizer
-    opt = torch.optim.Adagrad(model.parameters(), lr=1e-2, eps=1e-6)
+    #opt = torch.optim.Adagrad(model.parameters(), lr=1e-2, eps=1e-6)
+    opt = torch.optim.Adadelta(model.parameters())
     epochs_no_improve = 0
     best_loss = math.inf
     best_epoch = 0
-    path = './experiments/mnist'
+    path = './experiments/' + args.data_path + '/'
     for n in hidden_list:
         path += '_' + str(n)
     path += '#m' + str(args.num_masks)
